@@ -1,0 +1,101 @@
+name: Copy to Repo2
+
+on:
+  pull_request:
+    types:
+      - closed
+  push:
+    tags:
+      - '*'
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up environment
+        uses: actions/checkout@v2
+
+      - name: Run dependerbot checks
+        run: |
+          # Perform dependerbot checks using appropriate scripts and rules
+          # Replace this with the actual commands for dependency checks
+          python dependency_check.py
+          
+      - name: Check approval, up-to-date, and dependerbot checks
+        run: |
+            # Check if the pull request is approved
+            APPROVAL_STATUS=$(gh pr view ${{ github.event.pull_request.number }} --json state -q '.state')
+            if [[ "${APPROVAL_STATUS}" != "APPROVED" ]]; then
+              echo "Pull request is not approved."
+              exit 1
+            fi
+        
+            # Check if the main branch is up-to-date
+            git fetch origin
+            UP_TO_DATE=$(git rev-list --count HEAD..origin/main)
+            if [[ "${UP_TO_DATE}" -gt 0 ]]; then
+              echo "Main branch is not up-to-date."
+              exit 1
+            fi
+        
+            # Run dependerbot checks
+            python dependerbot_check.py
+            DEPENDERBOT_EXIT_CODE=$?
+            if [[ "${DEPENDERBOT_EXIT_CODE}" -ne 0 ]]; then
+              echo "Dependerbot checks failed."
+              exit 1
+            fi
+        
+      - name: Copy code to Repo2
+        run: |
+          # Copy code from user1/repo1 to user2/repo2
+          git clone https://github.com/user2/repo2.git
+          cd repo2
+          git config user.email "${{ secrets.USER2_EMAIL_PISUGAR }}"
+          git config user.name "${{ secrets.USER2_NAME_PISUGAR }}"
+          git checkout released
+          cp -R ../repo1/* .
+          git add .
+          git commit -m "Copied code from user1/repo1"
+          git push origin released
+
+          # Create the same tag in user2/repo2
+          git tag ${{ github.ref }}
+          git push origin ${{ github.ref }}
+
+      - name: Generate release in Repo2
+        run: |
+          # Generate a release based on the pushed tag
+          git checkout released
+          create-release --tag ${{ github.ref }} --title "Release ${{ github.ref }}" --commitish released --name "Release ${{ github.ref }}" --body "Release ${{ github.ref }}"
+
+      - name: Merge release branch into main in Repo2
+        run: |
+          # Merge the release branch into the main branch in user2/repo2
+          git checkout main
+          git merge released
+          git push origin main
+          
+      - name: Send email
+        uses: dawidd6/action-send-mail@v3.7.2
+        
+      - name: Setup SMTP
+        uses: einaregilsson/SMTP-Action@v3
+        with:
+            server_address: smtp.gmail.com
+            server_port: 587
+            username: ${{ secrets.MAIL_USERNAME }}
+            password: ${{ secrets.MAIL_PASSWORD }}
+            encryption: 'tls'
+        
+
+      - name: Send summary email
+        run: |
+          echo "Subject: Workflow Summary" > email.txt
+          echo "" >> email.txt
+          echo "Workflow run succeeded: ${{ job.status }}" >> email.txt
+          echo "Commit SHA: ${{ github.sha }}" >> email.txt
+          echo "Commit URL: ${{ github.event.repository.html_url }}/commit/${{ github.sha }}" >> email.txt
+          echo "" >> email.txt
+          cat email.txt | sendmail -f sender@gmail.com -t recipient1@gmail.com recipient2@gmail.com
