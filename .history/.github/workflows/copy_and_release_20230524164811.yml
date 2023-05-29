@@ -1,0 +1,68 @@
+name: Copy and Release Workflow
+
+on:
+  pull_request:
+    types:
+      - closed
+  push:
+    branches:
+      - main
+    tags:
+      - '*'
+
+jobs:
+  copy_to_repo2:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout central repo
+        uses: actions/checkout@v2
+
+      - name: Checkout repo 1
+        uses: actions/checkout@v2
+        with:
+          repository: boywiz/ha-pisugar
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.4.1
+        with:
+          ssh-private-key: ${{ secrets.PRIVATE_KEY }}
+
+      - name: Copy code to repo 2
+        run: |
+          git clone git@github.com:homeautomationmadness/ha-pisugar.git
+          cp -R ./* <repo2>/
+          cd <repo2>
+          git add .
+          git commit -m "Copied code from repo 1"
+          git push
+
+  generate_release:
+    needs: copy_to_repo2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout central repo
+        uses: actions/checkout@v2
+
+      - name: Checkout repo 2
+        uses: actions/checkout@v2
+        with:
+          repository: homeautomationmadness/ha-pisugar
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.4.1
+        with:
+          ssh-private-key: ${{ secrets.PRIVATE_KEY }}
+
+      - name: Generate release build script
+        run: |
+          # Generate the release build script based on the tag (e.g., ${{ github.ref }})
+          # Replace this placeholder with your actual release build script commands
+          echo "Generating release build script for tag ${{ github.ref }}"
+
+      - name: Merge release branch into main
+        run: |
+          git checkout main
+          git merge ${{ github.ref }}
+          git push
