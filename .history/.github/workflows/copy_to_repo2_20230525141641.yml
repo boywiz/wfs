@@ -1,0 +1,56 @@
+name: Copy to Repo 2
+
+on:
+  push:
+    tags:
+      - '*'
+  pull_request_review:
+    types:
+      - submitted
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout central repository
+        uses: actions/checkout@v2
+
+      - name: Set up SSH keys for Repo 1
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY_REPO1 }}" > ~/.ssh/id_rsa_repo1
+          chmod 600 ~/.ssh/id_rsa_repo1
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Copy code to Repo 2
+        run: |
+          git clone git@github.com:<user1>/<repo1>.git
+          cp -R ./* <repo1>/
+          cd <repo1>
+          git config user.email "<user1-email>"
+          git config user.name "<user1-username>"
+          git tag ${{ github.ref }}
+          git push origin ${{ github.ref }}
+
+  copy_to_repo2_repo2:
+    needs: copy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up SSH keys for Repo 2
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY_REPO2 }}" > ~/.ssh/id_rsa_repo2
+          chmod 600 ~/.ssh/id_rsa_repo2
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Copy code to Repo 2 (again)
+        run: |
+          git clone git@github.com:<user2>/<repo2>.git
+          cp -R ./* <repo2>/
+          cd <repo2>
+          git config user.email "<user2-email>"
+          git config user.name "<user2-username>"
+          git tag ${{ github.ref }}
+          git push origin ${{ github.ref }}
